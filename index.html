@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Dungeon Explorer - 5 Mountains Map</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body {
+            background-color: #000000;
+            color: #f8fafc;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        #ui-bar {
+            width: 100%;
+            max-width: 550px;
+            background: #222222;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 4px solid #00a8a8;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.8);
+            z-index: 10;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-weight: bold;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            text-shadow: 1px 1px 0px #000;
+        }
+        #exit-btn {
+            background: #a80000;
+            color: #ffffff;
+            border: 2px solid #ff5555;
+            padding: 4px 8px;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 11px;
+            cursor: pointer;
+            display: none;
+            text-transform: uppercase;
+        }
+        #exit-btn:active {
+            background: #550000;
+        }
+        #canvas-container {
+            position: relative;
+            width: 100%;
+            max-width: 550px;
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000000;
+        }
+        canvas {
+            display: block;
+            border: 2px solid #333;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.1);
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
+        }
+        #message-overlay {
+            position: absolute;
+            top: 20px;
+            background: rgba(0, 0, 0, 0.95);
+            color: #55ffff;
+            padding: 10px 18px;
+            border: 2px solid #00a8a8;
+            font-size: 13px;
+            font-weight: bold;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            text-align: center;
+            text-transform: uppercase;
+            box-shadow: 0 0 10px rgba(0, 168, 168, 0.5);
+            z-index: 15;
+        }
+        #game-over-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.92);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            z-index: 30;
+        }
+        #game-over-overlay img {
+            max-width: 80%;
+            max-height: 60%;
+            border: 3px solid #ff5555;
+            box-shadow: 0 0 20px rgba(255, 85, 85, 0.6);
+            border-radius: 6px;
+        }
+        #restart-btn {
+            background: #a80000;
+            color: #ffffff;
+            border: 2px solid #ff5555;
+            padding: 12px 24px;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 0 12px rgba(255, 0, 0, 0.6);
+            letter-spacing: 1px;
+            transition: background 0.2s, transform 0.1s;
+        }
+        #restart-btn:active {
+            background: #550000;
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-bar">
+        <div class="stat" style="color: #ff5555;">HP: <span id="hp-val">5/5</span></div>
+        <div class="stat" style="color: #ffaa00;">FRECCE: <span id="arrows-val">15/20</span></div>
+        <div class="stat" style="color: #55ffff;">SCUDO: <span id="shield-val">0/3</span></div>
+        <div class="stat" style="color: #aa55ff;">MANTELLO: <span id="cloak-val">OFF</span></div>
+        <div class="stat" style="color: #ffff55;">CHIAVI: <span id="keys-val">0/4</span></div>
+        <button id="exit-btn" onclick="exitToMap()">MAPPA ↩️</button>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="message-overlay">MESSAGGIO DI GIOCO</div>
+        
+        <div id="game-over-overlay">
+            <img src="https://static.wixstatic.com/media/23a004_47d5fc94274e42e1b4ed410b9d073a80~mv2.gif" alt="Game Over">
+            <button id="restart-btn" onclick="restartGame()">RIPROVA</button>
+        </div>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const hpEl = document.getElementById('hp-val');
+const arrowsEl = document.getElementById('arrows-val');
+const shieldEl = document.getElementById('shield-val');
+const cloakEl = document.getElementById('cloak-val');
+const keysEl = document.getElementById('keys-val');
+const exitBtn = document.getElementById('exit-btn');
+const msgOverlay = document.getElementById('message-overlay');
+const gameOverOverlay = document.getElementById('game-over-overlay');
+
+const MAX_ARROWS = 20;
+
+// --- ASSET GRAFICI E AUDIO ---
+const overworldImg = new Image();
+overworldImg.src = "https://static.wixstatic.com/media/23a004_9e59e6cd1d5e47378a339865ac8ad7ff~mv2.jpg";
+
+const dragonSoundEffect = new Audio('https://static.wixstatic.com/mp3/23a004_4e85dc805a9c4704b525ad36af2ae311.mp3');
+const winSoundEffect = new Audio('https://static.wixstatic.com/mp3/23a004_280113da60244df2b3aa29168ac98334.mp3');
+const loseSoundEffect = new Audio('https://static.wixstatic.com/mp3/23a004_806effa9ea96454795b19957d27357cd.m4a');
+const startSoundEffect = new Audio('https://static.wixstatic.com/mp3/23a004_50b001c6d83340399e674f968ecb1c62.m4a');
+startSoundEffect.loop = true;
+
+let isStartMusicPlaying = false;
+let activeAudioEffects = [];
+
+function playStartMusic() {
+    if (!isStartMusicPlaying) {
+        startSoundEffect.currentTime = 0;
+        let p = startSoundEffect.play();
+        if (p !== undefined) {
+            p.then(() => { isStartMusicPlaying = true; }).catch(() => { isStartMusicPlaying = false; });
+        }
+    }
+}
+
+function stopStartMusic() {
+    startSoundEffect.pause();
+    startSoundEffect.currentTime = 0;
+    isStartMusicPlaying = false;
+}
+
+function playAudioEffect(audioObj) {
+    try {
+        let sound = audioObj.cloneNode();
+        activeAudioEffects.push(sound);
+        sound.onended = () => {
+            activeAudioEffects = activeAudioEffects.filter(s => s !== sound);
+        };
+        sound.play().catch(() => {});
+        return sound;
+    } catch(e) {}
+}
+
+function stopAllAudioEffects() {
+    activeAudioEffects.forEach(sound => {
+        sound.pause();
+        sound.currentTime = 0;
+    });
+    activeAudioEffects = [];
+}
+
+// --- SISTEMA AUDIO WEB AUDIO API ---
+let audioCtx = null;
+let lastAmbientSoundTime = 0;
+let lastDragonSoundTime = 0;
+
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+}
+
+function playSynthSound(type) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+
+    if (type === 'move') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(120, now);
+        osc.frequency.exponentialRampToValueAtTime(60, now + 0.04);
+        gain.gain.setValueAtTime(0.03, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.04);
+        osc.start(now);
+        osc.stop(now + 0.04);
+    } else if (type === 'shoot') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(600, now);
+        osc.frequency.exponentialRampToValueAtTime(150, now + 0.12);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.12);
+        osc.start(now);
+        osc.stop(now + 0.12);
+    } else if (type === 'hit') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(100, now);
+        osc.frequency.linearRampToValueAtTime(30, now + 0.15);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+        osc.start(now);
+        osc.stop(now + 0.15);
+    } else if (type === 'item') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.setValueAtTime(880, now + 0.08);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.16);
+        osc.start(now);
+        osc.stop(now + 0.16);
+    } else if (type === 'powerup') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.exponentialRampToValueAtTime(900, now + 0.25);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+        osc.start(now);
+        osc.stop(now + 0.25);
+    } else if (type === 'block') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.setValueAtTime(600, now + 0.05);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+    } else if (type === 'victory') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.setValueAtTime(400, now + 0.1);
+        osc.frequency.setValueAtTime(500, now + 0.2);
+        osc.frequency.setValueAtTime(700, now + 0.3);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.5);
+        osc.start(now);
+        osc.stop(now + 0.5);
+    }
+}
+
+// --- RADAR SONORO CON PAUSA DI 2 SECONDI ---
+function checkEnemyAudioProximity(now) {
+    if (gameState !== 'DUNGEON') return;
+
+    let boss = enemies.find(e => e.type === 'boss');
+    if (boss) {
+        let dist = Math.hypot(player.x - (boss.x + 0.5), player.y - (boss.y + 0.5));
+        
+        if (dist <= 8) {
+            let soundDuration = (dragonSoundEffect.duration && !isNaN(dragonSoundEffect.duration) && dragonSoundEffect.duration > 0) ? dragonSoundEffect.duration * 1000 : 1500;
+            if (now - lastDragonSoundTime >= soundDuration + 2000) {
+                lastDragonSoundTime = now;
+                let vol = Math.max(0.15, Math.min(1.0, 1 - (dist / 8.5)));
+                let sound = playAudioEffect(dragonSoundEffect);
+                if (sound) sound.volume = vol;
+            }
+        }
+    }
+
+    let closestUnseenDist = 999;
+    enemies.forEach(e => {
+        if (e.type !== 'boss') {
+            let ex = Math.floor(e.x);
+            let ey = Math.floor(e.y);
+            if (fogGrid[ey] && fogGrid[ey][ex]) {
+                let dist = Math.hypot(player.x - (e.x + 0.5), player.y - (e.y + 0.5));
+                if (dist < closestUnseenDist) closestUnseenDist = dist;
+            }
+        }
+    });
+
+    if (closestUnseenDist <= 6) {
+        let interval = Math.max(1200, closestUnseenDist * 400); 
+        if (now - lastAmbientSoundTime >= interval) {
+            lastAmbientSoundTime = now;
+            playMonsterProximitySound(closestUnseenDist);
+        }
+    }
+}
+
+function playMonsterProximitySound(dist) {
+    if (!audioCtx) return;
+    let vol = Math.max(0.02, Math.min(0.12, 0.12 * (1 - dist / 6)));
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(180, now);
+    osc.frequency.exponentialRampToValueAtTime(90, now + 0.2);
+    
+    gain.gain.setValueAtTime(vol, now);
+    gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+    
+    osc.start(now);
+    osc.stop(now + 0.2);
+}
+
+// --- CARICAMENTO SPRITE ---
+const playerImg = new Image();
+playerImg.src = "https://static.wixstatic.com/media/23a004_0899cc30fcee49c2a3cd0c5b681ea2d4~mv2.png"; 
+
+const enemyImg = new Image();
+enemyImg.src = "https://static.wixstatic.com/media/23a004_dd87f6e2bb7b4bc7ba7193c8672a97a9~mv2.png";
+
+let bossImgClean = null;
+const bossImg = new Image();
+bossImg.crossOrigin = "anonymous";
+bossImg.src = "https://static.wixstatic.com/media/23a004_ee715f7496e6490e95b203d560b32a89~mv2.png";
+bossImg.onload = () => {
+    try {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = bossImg.width;
+        tempCanvas.height = bossImg.height;
+        const tCtx = tempCanvas.getContext('2d');
+        tCtx.drawImage(bossImg, 0, 0);
+        
+        const imgData = tCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        const data = imgData.data;
+        
+        for (let i = 0; i < data.length; i += 4) {
+            if (data[i] > 220 && data[i+1] > 220 && data[i+2] > 220) {
+                data[i+3] = 0;
+            }
+        }
+        tCtx.putImageData(imgData, 0, 0);
+        bossImgClean = tempCanvas;
+    } catch (e) {
+        bossImgClean = null;
+    }
+};
+
+const floorImg = new Image();
+floorImg.src = "https://static.wixstatic.com/media/23a004_db0fc32bcb654b1db42c6471069526d9~mv2.png";
+
+const wallImg = new Image();
+wallImg.src = "https://static.wixstatic.com/media/23a004_6b6685ddc64b4fb9a45ac7236e4c6ee6~mv2.png";
+
+let tileSize = 24;
+let displaySize = 0;
+const GRID_SIZE = 21; 
+
+function resizeCanvas() {
+    const container = document.getElementById('canvas-container');
+    displaySize = Math.min(container.clientWidth, container.clientHeight) - 10;
+    const dpr = window.devicePixelRatio || 1;
+    
+    canvas.style.width = displaySize + 'px';
+    canvas.style.height = displaySize + 'px';
+    canvas.width = Math.floor(displaySize * dpr);
+    canvas.height = Math.floor(displaySize * dpr);
+    
+    tileSize = displaySize / GRID_SIZE;
+    
+    ctx.resetTransform();
+    ctx.scale(dpr, dpr);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// --- STATO DEL GIOCO ---
+let gameState = 'OVERWORLD';
+let keysCollectedCount = 0;
+
+let player = {
+    x: 1.5, y: 18.5,
+    targetX: null, targetY: null,
+    dirX: 1, dirY: 0,
+    speed: 4.8, 
+    hp: 5, maxHp: 5,
+    arrows: 15,
+    shield: 0,
+    invisibleUntil: 0,
+    lastHitTime: 0
+};
+
+const keysPressed = {};
+
+let overworldNodes = [];
+let currentDungeonNode = null;
+let selectedNodeIndex = 0;
+
+function initOverworld() {
+    gameState = 'OVERWORLD';
+    exitBtn.style.display = 'none';
+    gameOverOverlay.style.display = 'none';
+    
+    player.hp = player.maxHp;
+    player.arrows = 15;
+    player.shield = 0;
+    player.invisibleUntil = 0;
+    player.lastHitTime = 0;
+    
+    overworldNodes = [
+        { id: 1, x: 9,   y: 18,   name: "MONTAGNA 1", unlocked: true,  cleared: false, isFinalBoss: false },
+        { id: 2, x: 18,  y: 15,   name: "MONTAGNA 2", unlocked: false, cleared: false, isFinalBoss: false },
+        { id: 3, x: 19,  y: 6.5,  name: "MONTAGNA 3", unlocked: false, cleared: false, isFinalBoss: false },
+        { id: 4, x: 16,  y: 3.5,  name: "MONTAGNA 4", unlocked: false, cleared: false, isFinalBoss: false },
+        { id: 5, x: 10,  y: 4.5,  name: "FORTEZZA DRAGO", unlocked: false, cleared: false, isFinalBoss: true }
+    ];
+    selectedNodeIndex = 0;
+    keysCollectedCount = 0;
+
+    playStartMusic();
+}
+
+let dungeonGrid = [];
+let fogGrid = [];
+let enemies = [];
+let items = [];
+let playerProjectiles = [];
+let enemyProjectiles = [];
+
+function generateDungeon(isFinalBoss) {
+    stopStartMusic(); 
+
+    let isValid = false;
+    let attempts = 0;
+
+    while (!isValid && attempts < 100) {
+        attempts++;
+        dungeonGrid = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(1));
+        fogGrid = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(true));
+
+        let cx = 1, cy = GRID_SIZE - 2;
+        dungeonGrid[cy][cx] = 0;
+        let startX = cx, startY = cy;
+
+        for (let i = 0; i < 280; i++) {
+            let dir = Math.floor(Math.random() * 4);
+            if (dir === 0 && cy > 1) cy--;
+            else if (dir === 1 && cy < GRID_SIZE - 2) cy++;
+            else if (dir === 2 && cx > 1) cx--;
+            else if (dir === 3 && cx < GRID_SIZE - 2) cx++;
+            dungeonGrid[cy][cx] = 0;
+        }
+
+        let bossX = GRID_SIZE - 2, bossY = 1;
+        dungeonGrid[bossY][bossX] = 0;
+
+        if (isPathClear(startX, startY, bossX, bossY)) {
+            isValid = true;
+            player.x = startX + 0.5;
+            player.y = startY + 0.5;
+            player.targetX = null;
+            player.targetY = null;
+            player.dirX = 1; player.dirY = 0;
+            player.lastHitTime = 0;
+
+            setupEntities(bossX, bossY, isFinalBoss);
+        }
+    }
+
+    gameState = 'DUNGEON';
+    exitBtn.style.display = 'block';
+    lastDragonSoundTime = 0;
+    
+    updateFogOfWar();
+    showMessage(isFinalBoss ? "Sconfiggi il Drago Finale!" : "Sconfiggi il Boss per la chiave!");
+}
+
+function triggerGameOver() {
+    gameState = 'GAMEOVER';
+    stopStartMusic();
+    playAudioEffect(loseSoundEffect);
+    gameOverOverlay.style.display = 'flex';
+}
+
+function restartGame() {
+    stopStartMusic();
+    stopAllAudioEffects();
+    initOverworld();
+}
+
+function isPathClear(startX, startY, targetX, targetY) {
+    let visited = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(false));
+    let queue = [{x: startX, y: startY}];
+    visited[startY][startX] = true;
+
+    while (queue.length > 0) {
+        let curr = queue.shift();
+        if (curr.x === targetX && curr.y === targetY) return true;
+
+        let dirs = [{x:0, y:-1}, {x:0, y:1}, {x:-1, y:0}, {x:1, y:0}];
+        for (let d of dirs) {
+            let nx = curr.x + d.x;
+            let ny = curr.y + d.y;
+            if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) {
+                if (dungeonGrid[ny][nx] === 0 && !visited[ny][nx]) {
+                    visited[ny][nx] = true;
+                    queue.push({x: nx, y: ny});
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// --- ALGORITMO DI PATHFINDING BFS PER DRAGO E PIPISTRELLI ---
+function getNextStepBFS(startX, startY, targetX, targetY) {
+    let sX = Math.floor(startX);
+    let sY = Math.floor(startY);
+    let tX = Math.floor(targetX);
+    let tY = Math.floor(targetY);
+
+    if (sX === tX && sY === tY) return null;
+
+    let visited = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(false));
+    let parent = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(null));
+    let queue = [{x: sX, y: sY}];
+    visited[sY][sX] = true;
+
+    let found = false;
+    let dirs = [{x:0, y:-1}, {x:0, y:1}, {x:-1, y:0}, {x:1, y:0}];
+
+    while (queue.length > 0) {
+        let curr = queue.shift();
+        if (curr.x === tX && curr.y === tY) {
+            found = true;
+            break;
+        }
+
+        for (let d of dirs) {
+            let nx = curr.x + d.x;
+            let ny = curr.y + d.y;
+            if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) {
+                if (dungeonGrid[ny][nx] === 0 && !visited[ny][nx]) {
+                    visited[ny][nx] = true;
+                    parent[ny][nx] = curr;
+                    queue.push({x: nx, y: ny});
+                }
+            }
+        }
+    }
+
+    if (!found) return null;
+
+    let curr = {x: tX, y: tY};
+    while (parent[curr.y][curr.x] && (parent[curr.y][curr.x].x !== sX || parent[curr.y][curr.x].y !== sY)) {
+        curr = parent[curr.y][curr.x];
+    }
+
+    return curr;
+}
+
+function setupEntities(bossX, bossY, isFinalBoss) {
+    enemies = [];
+    items = [];
+    playerProjectiles = [];
+    enemyProjectiles = [];
+
+    enemies.push({
+        x: bossX, y: bossY,
+        hp: 5, maxHp: 5,
+        type: 'boss',
+        isFinal: isFinalBoss,
+        lastShootTime: Date.now(),
+        lastMoveTime: Date.now()
+    });
+
+    let normalEnemiesCount = 0;
+    for (let r = 1; r < GRID_SIZE - 1; r++) {
+        for (let c = 1; c < GRID_SIZE - 1; c++) {
+            if (dungeonGrid[r][c] === 0 && (c !== Math.floor(player.x) || r !== Math.floor(player.y)) && (c !== bossX || r !== bossY)) {
+                let rand = Math.random();
+                if (rand < 0.04) {
+                    enemies.push({ 
+                        x: c, y: r, 
+                        hp: 3, maxHp: 3, 
+                        type: 'static',
+                        lastShootTime: Date.now()
+                    });
+                    normalEnemiesCount++;
+                } else if (rand < 0.08) {
+                    enemies.push({ 
+                        x: c, y: r, 
+                        hp: 2, maxHp: 2, 
+                        type: 'bat',
+                        lastMoveTime: Date.now(),
+                        lastHitTime: 0
+                    });
+                    normalEnemiesCount++;
+                } else if (rand < 0.12) {
+                    items.push({ x: c, y: r, type: 'arrow', amount: 5 });
+                } else if (rand < 0.14) {
+                    items.push({ x: c, y: r, type: 'potion', amount: 1 });
+                } else if (rand < 0.155) {
+                    items.push({ x: c, y: r, type: 'shield' });
+                } else if (rand < 0.165) {
+                    items.push({ x: c, y: r, type: 'cloak' });
+                }
+            }
+        }
+    }
+
+    if (normalEnemiesCount === 0) {
+        enemies.push({ 
+            x: Math.floor(player.x) + 2, y: Math.floor(player.y), 
+            hp: 2, maxHp: 2, 
+            type: 'bat',
+            lastMoveTime: Date.now(),
+            lastHitTime: 0
+        });
+    }
+}
+
+function exitToMap() {
+    gameState = 'OVERWORLD';
+    exitBtn.style.display = 'none';
+    showMessage("Sei tornato alla mappa");
+}
+
+function updateFogOfWar() {
+    let radius = 3.5;
+    let px = Math.floor(player.x);
+    let py = Math.floor(player.y);
+
+    for (let r = 0; r < GRID_SIZE; r++) {
+        for (let c = 0; c < GRID_SIZE; c++) {
+            let dist = Math.hypot(c - px, r - py);
+            if (dist <= radius) {
+                fogGrid[r][c] = false;
+            }
+        }
+    }
+}
+
+function showMessage(txt) {
+    msgOverlay.textContent = txt;
+    msgOverlay.style.opacity = '1';
+    setTimeout(() => { msgOverlay.style.opacity = '0'; }, 2500);
+}
+
+function shootArrow() {
+    initAudio();
+    if (player.arrows > 0) {
+        player.arrows--;
+        playSynthSound('shoot');
+        playerProjectiles.push({
+            x: player.x, y: player.y,
+            vx: player.dirX * 0.18,
+            vy: player.dirY * 0.18
+        });
+    } else {
+        showMessage("Frecce esaurite!");
+    }
+}
+
+function startSelectedDungeon() {
+    let node = overworldNodes[selectedNodeIndex];
+    if (!node.unlocked) {
+        showMessage("SCONFIGGI IL DUNGEON PRECEDENTE PER PROSEGUIRE!");
+    } else {
+        currentDungeonNode = node;
+        generateDungeon(node.isFinalBoss);
+    }
+}
+
+// --- GESTIONE INPUT TASTIERA CONTINUO ---
+window.addEventListener('keydown', (e) => {
+    initAudio();
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'w', 'a', 's', 'd'].includes(e.key)) {
+        e.preventDefault();
+    }
+    keysPressed[e.key] = true;
+
+    if (gameState === 'OVERWORLD') {
+        if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'ArrowUp' || e.key === 'w') {
+            selectedNodeIndex = (selectedNodeIndex + 1) % overworldNodes.length;
+            playSynthSound('move');
+        } else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'ArrowDown' || e.key === 's') {
+            selectedNodeIndex = (selectedNodeIndex - 1 + overworldNodes.length) % overworldNodes.length;
+            playSynthSound('move');
+        } else if (e.key === 'Enter' || e.key === ' ') {
+            startSelectedDungeon();
+        }
+    } else if (gameState === 'DUNGEON') {
+        if (e.key === ' ') {
+            shootArrow();
+        }
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    keysPressed[e.key] = false;
+});
+
+// --- INPUT TOUCH / MOUSE CORRETTO PER MOBILE ---
+canvas.addEventListener('pointerdown', (e) => {
+    initAudio();
+    const rect = canvas.getBoundingClientRect();
+    
+    const scaleX = displaySize / rect.width;
+    const scaleY = displaySize / rect.height;
+    const touchX = (e.clientX - rect.left) * scaleX;
+    const touchY = (e.clientY - rect.top) * scaleY;
+
+    const gridX = touchX / tileSize;
+    const gridY = touchY / tileSize;
+
+    if (gameState === 'OVERWORLD') {
+        overworldNodes.forEach((node, idx) => {
+            let dist = Math.hypot(node.x - gridX, node.y - gridY);
+            if (dist < 2.2) {
+                selectedNodeIndex = idx;
+                playSynthSound('move');
+                startSelectedDungeon();
+            }
+        });
+    } else if (gameState === 'DUNGEON') {
+        let clickedEnemy = enemies.find(e => 
+            !fogGrid[Math.floor(e.y)][Math.floor(e.x)] &&
+            Math.hypot((e.x + 0.5) - gridX, (e.y + 0.5) - gridY) < 1.2
+        );
+
+        if (clickedEnemy) {
+            let angle = Math.atan2((clickedEnemy.y + 0.5) - player.y, (clickedEnemy.x + 0.5) - player.x);
+            player.dirX = Math.cos(angle);
+            player.dirY = Math.sin(angle);
+            shootArrow();
+        } else {
+            let gx = Math.floor(gridX);
+            let gy = Math.floor(gridY);
+            if (gx >= 0 && gx < GRID_SIZE && gy >= 0 && gy < GRID_SIZE) {
+                if (dungeonGrid[gy][gx] === 0) {
+                    player.targetX = gx + 0.5;
+                    player.targetY = gy + 0.5;
+                }
+            }
+        }
+    }
+});
+
+// --- SISTEMA DI COLLISIONE FLUIDA ---
+function movePlayerSmooth(vx, vy) {
+    const radius = 0.32;
+
+    let nextX = player.x + vx;
+    if (!checkWallCollision(nextX, player.y, radius)) {
+        player.x = nextX;
+    }
+
+    let nextY = player.y + vy;
+    if (!checkWallCollision(player.x, nextY, radius)) {
+        player.y = nextY;
+    }
+
+    updateFogOfWar();
+}
+
+function checkWallCollision(px, py, r) {
+    let minX = Math.floor(px - r);
+    let maxX = Math.floor(px + r);
+    let minY = Math.floor(py - r);
+    let maxY = Math.floor(py + r);
+
+    for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+            if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE || dungeonGrid[y][x] === 1) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// --- GAME LOOP ---
+function update(dt) {
+    if (gameState === 'DUNGEON') {
+        const now = Date.now();
+        
+        checkEnemyAudioProximity(now);
+
+        let vx = 0;
+        let vy = 0;
+
+        if (keysPressed['ArrowUp'] || keysPressed['w']) vy -= 1;
+        if (keysPressed['ArrowDown'] || keysPressed['s']) vy += 1;
+        if (keysPressed['ArrowLeft'] || keysPressed['a']) vx -= 1;
+        if (keysPressed['ArrowRight'] || keysPressed['d']) vx += 1;
+
+        let moveDistance = player.speed * dt;
+
+        if (vx !== 0 || vy !== 0) {
+            player.targetX = null;
+            player.targetY = null;
+
+            let len = Math.hypot(vx, vy);
+            vx = (vx / len) * moveDistance;
+            vy = (vy / len) * moveDistance;
+
+            player.dirX = vx / moveDistance;
+            player.dirY = vy / moveDistance;
+
+            movePlayerSmooth(vx, vy);
+        } else if (player.targetX !== null && player.targetY !== null) {
+            let dx = player.targetX - player.x;
+            let dy = player.targetY - player.y;
+            let dist = Math.hypot(dx, dy);
+
+            if (dist > 0.1) {
+                vx = (dx / dist) * moveDistance;
+                vy = (dy / dist) * moveDistance;
+                player.dirX = vx / moveDistance;
+                player.dirY = vy / moveDistance;
+                movePlayerSmooth(vx, vy);
+            } else {
+                player.targetX = null;
+                player.targetY = null;
+            }
+        }
+
+        let isInvisible = Date.now() < player.invisibleUntil;
+
+        // DANNO E CONTATTO CON I NEMICI
+        if (!isInvisible) {
+            for (let e of enemies) {
+                let distToEnemy = Math.hypot((e.x + 0.5) - player.x, (e.y + 0.5) - player.y);
+                if (distToEnemy < 0.65) {
+                    if (e.type === 'bat') {
+                        if (now - (e.lastHitTime || 0) > 1000) {
+                            e.lastHitTime = now;
+                            if (player.arrows > 0) {
+                                player.arrows = Math.max(0, player.arrows - 1);
+                                playSynthSound('hit');
+                                showMessage("PIPISTRELLO! -1 FRECCIA");
+                            }
+                        }
+                    } else if (now - player.lastHitTime > 1000) {
+                        player.lastHitTime = now;
+                        if (player.shield > 0) {
+                            player.shield--;
+                            playSynthSound('block');
+                            showMessage(`CONTATTO BLOCCATO! SCUDO: ${player.shield}/3`);
+                        } else {
+                            player.hp -= 1;
+                            playSynthSound('hit');
+                            showMessage("CONTATTO NEMICO! -1 HP");
+                            if (player.hp <= 0) {
+                                triggerGameOver();
+                                return;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Raccoglimento Oggetti
+        items = items.filter(item => {
+            if (Math.hypot((item.x + 0.5) - player.x, (item.y + 0.5) - player.y) < 0.6) {
+                if (item.type === 'arrow') {
+                    playSynthSound('item');
+                    player.arrows = Math.min(MAX_ARROWS, player.arrows + item.amount);
+                    showMessage(`+${item.amount} FRECCE! (MAX 20)`);
+                } else if (item.type === 'potion') {
+                    playSynthSound('item');
+                    player.hp = Math.min(player.maxHp, player.hp + item.amount);
+                    showMessage(`+1 SALUTE!`);
+                } else if (item.type === 'shield') {
+                    playSynthSound('powerup');
+                    player.shield = 3;
+                    showMessage("SCUDO TROVATO! (PROTEGGE DA 3 COLPI)");
+                } else if (item.type === 'cloak') {
+                    playSynthSound('powerup');
+                    player.invisibleUntil = Date.now() + 15000;
+                    showMessage("MANTELLO ATTIVO! INVISIBILE PER 15 SECONDI");
+                }
+                return false;
+            }
+            return true;
+        });
+
+        // Proiettili Giocatore
+        playerProjectiles.forEach((p, index) => {
+            p.x += p.vx * (dt * 60);
+            p.y += p.vy * (dt * 60);
+
+            let gx = Math.floor(p.x);
+            let gy = Math.floor(p.y);
+            if (gx < 0 || gx >= GRID_SIZE || gy < 0 || gy >= GRID_SIZE || dungeonGrid[gy][gx] === 1) {
+                playerProjectiles.splice(index, 1);
+                return;
+            }
+
+            enemies.forEach(e => {
+                if (Math.hypot((e.x + 0.5) - p.x, (e.y + 0.5) - p.y) < 0.6) {
+                    e.hp -= 1;
+                    playSynthSound('hit');
+                    playerProjectiles.splice(index, 1);
+                }
+            });
+        });
+
+        // Proiettili Nemici
+        enemyProjectiles.forEach((p, index) => {
+            p.x += p.vx * (dt * 60);
+            p.y += p.vy * (dt * 60);
+
+            let gx = Math.floor(p.x);
+            let gy = Math.floor(p.y);
+            if (gx < 0 || gx >= GRID_SIZE || gy < 0 || gy >= GRID_SIZE || dungeonGrid[gy][gx] === 1) {
+                enemyProjectiles.splice(index, 1);
+                return;
+            }
+
+            if (Math.hypot(p.x - player.x, p.y - player.y) < 0.5) {
+                enemyProjectiles.splice(index, 1);
+                
+                if (player.shield > 0) {
+                    player.shield--;
+                    playSynthSound('block');
+                    showMessage(`COLPO BLOCCATO! SCUDO: ${player.shield}/3`);
+                } else {
+                    player.hp -= 1;
+                    playSynthSound('hit');
+                    player.lastHitTime = now;
+                    if (player.hp <= 0) {
+                        triggerGameOver();
+                        return;
+                    }
+                }
+            }
+        });
+
+        // Nemici (Drago, Statico e Pipistrello)
+        enemies = enemies.filter(e => {
+            if (e.hp <= 0) {
+                if (e.type === 'boss') {
+                    playSynthSound('victory');
+                    if (e.isFinal) {
+                        playAudioEffect(winSoundEffect);
+                        showMessage("VITTORIA FINALE! HAI SCONFITTO IL DRAGO!");
+                        setTimeout(() => { initOverworld(); }, 3500);
+                    } else {
+                        if (currentDungeonNode) {
+                            currentDungeonNode.cleared = true;
+                            let currIdx = overworldNodes.findIndex(n => n.id === currentDungeonNode.id);
+                            if (currIdx !== -1 && currIdx + 1 < overworldNodes.length) {
+                                overworldNodes[currIdx + 1].unlocked = true;
+                                selectedNodeIndex = currIdx + 1; 
+                            }
+                        }
+                        keysCollectedCount++;
+                        showMessage("CHIAVE OTTENUTA! PROSSIMO DUNGEON SBLOCCATO!");
+                        setTimeout(() => { exitToMap(); }, 2000);
+                    }
+                }
+                return false;
+            }
+
+            if (!isInvisible && (e.type === 'boss' || e.type === 'static') && !fogGrid[Math.floor(e.y)][Math.floor(e.x)]) {
+                if (now - e.lastShootTime >= 2400) {
+                    e.lastShootTime = now;
+                    let angle = Math.atan2(player.y - (e.y + 0.5), player.x - (e.x + 0.5));
+                    enemyProjectiles.push({
+                        x: e.x + 0.5, y: e.y + 0.5,
+                        vx: Math.cos(angle) * 0.11,
+                        vy: Math.sin(angle) * 0.11
+                    });
+                }
+            }
+
+            if (!isInvisible && e.type === 'bat' && now - e.lastMoveTime >= 650) {
+                e.lastMoveTime = now;
+                let nextStep = getNextStepBFS(e.x, e.y, player.x, player.y);
+                if (nextStep) {
+                    e.x = nextStep.x;
+                    e.y = nextStep.y;
+                }
+            }
+
+            let nodeLevel = currentDungeonNode ? currentDungeonNode.id : 1;
+            let bossMoveInterval = Math.max(320, 1000 - (nodeLevel - 1) * 170);
+
+            if (!isInvisible && e.type === 'boss' && now - e.lastMoveTime >= bossMoveInterval) {
+                e.lastMoveTime = now;
+                let nextStep = getNextStepBFS(e.x, e.y, player.x, player.y);
+                if (nextStep) {
+                    e.x = nextStep.x;
+                    e.y = nextStep.y;
+                }
+            }
+
+            return true;
+        });
+    }
+
+    hpEl.textContent = `${player.hp}/5`;
+    arrowsEl.textContent = `${player.arrows}/${MAX_ARROWS}`;
+    shieldEl.textContent = `${player.shield}/3`;
+    
+    let cloakSecondsLeft = Math.ceil((player.invisibleUntil - Date.now()) / 1000);
+    cloakEl.textContent = cloakSecondsLeft > 0 ? `${cloakSecondsLeft}s` : "OFF";
+    keysEl.textContent = `${keysCollectedCount}/4`;
+}
+
+// --- RENDER ---
+function draw() {
+    ctx.clearRect(0, 0, displaySize, displaySize);
+
+    if (gameState === 'OVERWORLD') {
+        if (overworldImg.complete && overworldImg.naturalWidth !== 0) {
+            ctx.drawImage(overworldImg, 0, 0, displaySize, displaySize);
+        } else {
+            ctx.fillStyle = '#051111';
+            ctx.fillRect(0, 0, displaySize, displaySize);
+        }
+
+        for (let i = 0; i < overworldNodes.length - 1; i++) {
+            let currNode = overworldNodes[i];
+            let nextNode = overworldNodes[i+1];
+
+            let x1 = currNode.x * tileSize;
+            let y1 = currNode.y * tileSize;
+            let x2 = nextNode.x * tileSize;
+            let y2 = nextNode.y * tileSize;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.lineWidth = 3;
+
+            if (nextNode.unlocked) {
+                ctx.strokeStyle = '#00ffff';
+                ctx.setLineDash([6, 4]);
+            } else {
+                ctx.strokeStyle = 'rgba(255, 85, 85, 0.45)';
+                ctx.setLineDash([4, 6]);
+            }
+            ctx.stroke();
+            ctx.restore();
+
+            let steps = 6;
+            for (let s = 1; s < steps; s++) {
+                let px = x1 + (x2 - x1) * (s / steps);
+                let py = y1 + (y2 - y1) * (s / steps);
+
+                ctx.beginPath();
+                ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = nextNode.unlocked ? '#ffff55' : 'rgba(255, 255, 255, 0.3)';
+                ctx.fill();
+            }
+        }
+
+        overworldNodes.forEach((node) => {
+            let nx = node.x * tileSize;
+            let ny = node.y * tileSize;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(nx, ny - 16, 11, 0, Math.PI * 2);
+            ctx.fillStyle = node.cleared ? '#00a800' : (node.unlocked ? '#ffaa00' : '#222222');
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.8;
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(node.id, nx, ny - 16);
+            ctx.restore();
+
+            if (node.cleared) {
+                ctx.fillStyle = '#55ff55';
+                ctx.font = 'bold 14px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('✔', nx, ny + 8);
+            }
+        });
+
+        let selectedNode = overworldNodes[selectedNodeIndex];
+        if (selectedNode) {
+            let nx = selectedNode.x * tileSize;
+            let ny = selectedNode.y * tileSize;
+
+            let pulse = 0.5 + 0.5 * Math.sin(Date.now() / 180); 
+            let radius = tileSize * (1.6 + pulse * 0.5);
+
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+
+            let grad = ctx.createRadialGradient(nx, ny, tileSize * 0.2, nx, ny, radius);
+            if (selectedNode.unlocked) {
+                grad.addColorStop(0, 'rgba(255, 240, 120, 0.95)');
+                grad.addColorStop(0.4, 'rgba(255, 180, 0, 0.55)');
+                grad.addColorStop(1, 'rgba(255, 150, 0, 0)');
+            } else {
+                grad.addColorStop(0, 'rgba(255, 80, 80, 0.85)');
+                grad.addColorStop(0.5, 'rgba(200, 0, 0, 0.4)');
+                grad.addColorStop(1, 'rgba(150, 0, 0, 0)');
+            }
+
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(nx, ny, radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+            ctx.save();
+            ctx.fillStyle = selectedNode.unlocked ? '#ffff55' : '#ff5555';
+            ctx.font = 'bold 13px monospace';
+            ctx.textAlign = 'center';
+            let labelY = ny - tileSize * (1.3 + pulse * 0.2);
+            let textLabel = selectedNode.unlocked ? `▼ ENTRA M${selectedNode.id}` : '🔒 BLOCCATO';
+            ctx.fillText(textLabel, nx, labelY);
+            ctx.restore();
+        }
+
+    } else if (gameState === 'DUNGEON') {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        for (let r = 0; r < GRID_SIZE; r++) {
+            for (let c = 0; c < GRID_SIZE; c++) {
+                let x = c * tileSize;
+                let y = r * tileSize;
+
+                if (fogGrid[r][c]) {
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(x, y, tileSize + 0.5, tileSize + 0.5);
+                } else {
+                    if (dungeonGrid[r][c] === 1) {
+                        if (wallImg.complete && wallImg.naturalWidth !== 0) {
+                            ctx.drawImage(wallImg, x, y, tileSize + 0.5, tileSize + 0.5);
+                        } else {
+                            ctx.fillStyle = '#005555';
+                            ctx.fillRect(x, y, tileSize + 0.5, tileSize + 0.5);
+                        }
+                    } else {
+                        if (floorImg.complete && floorImg.naturalWidth !== 0) {
+                            ctx.drawImage(floorImg, x, y, tileSize + 0.5, tileSize + 0.5);
+                        } else {
+                            ctx.fillStyle = '#111111';
+                            ctx.fillRect(x, y, tileSize + 0.5, tileSize + 0.5);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Oggetti
+        items.forEach(item => {
+            if (!fogGrid[Math.floor(item.y)][Math.floor(item.x)]) {
+                ctx.font = `${tileSize * 0.65}px monospace`;
+                ctx.textAlign = 'center';
+                let icon = '🏹';
+                if (item.type === 'potion') icon = '🧪';
+                else if (item.type === 'shield') icon = '🛡️';
+                else if (item.type === 'cloak') icon = '🧥';
+                ctx.fillText(icon, (item.x + 0.5) * tileSize, (item.y + 0.7) * tileSize);
+            }
+        });
+
+        // Proiettili
+        ctx.fillStyle = '#ffff55';
+        playerProjectiles.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x * tileSize, p.y * tileSize, 3, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        ctx.fillStyle = '#ff5555';
+        enemyProjectiles.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x * tileSize, p.y * tileSize, 4, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // Nemici (Drago, Statico e Pipistrello)
+        ctx.imageSmoothingEnabled = false;
+        enemies.forEach(e => {
+            if (!fogGrid[Math.floor(e.y)][Math.floor(e.x)]) {
+                let ex = e.x * tileSize;
+                let ey = e.y * tileSize;
+
+                if (e.type === 'boss') {
+                    ctx.save();
+                    if (bossImgClean) {
+                        ctx.drawImage(bossImgClean, ex, ey, tileSize, tileSize);
+                    } else if (bossImg.complete && bossImg.naturalWidth !== 0) {
+                        ctx.globalCompositeOperation = 'multiply';
+                        ctx.drawImage(bossImg, ex, ey, tileSize, tileSize);
+                    } else {
+                        let cx = (e.x + 0.5) * tileSize;
+                        let cy = (e.y + 0.5) * tileSize;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, tileSize * 0.65, 0, Math.PI * 2);
+                        ctx.fillStyle = '#a80000';
+                        ctx.fill();
+                    }
+                    ctx.restore();
+                } else if (e.type === 'bat') {
+                    ctx.save();
+                    let cx = (e.x + 0.5) * tileSize;
+                    let cy = (e.y + 0.55) * tileSize;
+                    ctx.font = `${tileSize * 0.75}px monospace`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('🦇', cx, cy);
+                    ctx.restore();
+                } else {
+                    ctx.save();
+                    if (enemyImg.complete && enemyImg.naturalWidth !== 0) {
+                        ctx.drawImage(enemyImg, ex, ey, tileSize, tileSize);
+                    } else {
+                        let cx = (e.x + 0.5) * tileSize;
+                        let cy = (e.y + 0.5) * tileSize;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, tileSize * 0.4, 0, Math.PI * 2);
+                        ctx.fillStyle = '#00a800';
+                        ctx.fill();
+                    }
+                    ctx.restore();
+                }
+
+                let cx = (e.x + 0.5) * tileSize;
+                let cy = (e.y + 0.5) * tileSize;
+                ctx.fillStyle = '#555555';
+                ctx.fillRect(cx - 10, cy - tileSize * 0.6, 20, 3);
+                ctx.fillStyle = '#ff5555';
+                ctx.fillRect(cx - 10, cy - tileSize * 0.6, (e.hp / e.maxHp) * 20, 3);
+            }
+        });
+
+        // Sprite Giocatore
+        let px = (player.x - 0.5) * tileSize;
+        let py = (player.y - 0.5) * tileSize;
+        let isInvisible = Date.now() < player.invisibleUntil;
+        let isRecentlyHit = (Date.now() - player.lastHitTime < 1000) && Math.floor(Date.now() / 100) % 2 === 0;
+
+        ctx.save();
+        if (isRecentlyHit) {
+            ctx.globalAlpha = 0.3;
+        } else if (isInvisible) {
+            ctx.globalAlpha = 0.45;
+            ctx.beginPath();
+            ctx.arc(player.x * tileSize, player.y * tileSize, tileSize * 0.75, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(170, 85, 255, 0.4)';
+            ctx.fill();
+        }
+
+        if (player.dirX < 0) {
+            ctx.translate(px + tileSize, py);
+            ctx.scale(-1, 1);
+            if (playerImg.complete && playerImg.naturalWidth !== 0) {
+                ctx.drawImage(playerImg, 0, 0, tileSize, tileSize);
+            } else {
+                ctx.fillStyle = '#55ffff';
+                ctx.fillRect(0, 0, tileSize, tileSize);
+            }
+        } else {
+            if (playerImg.complete && playerImg.naturalWidth !== 0) {
+                ctx.drawImage(playerImg, px, py, tileSize, tileSize);
+            } else {
+                ctx.fillStyle = '#55ffff';
+                ctx.fillRect(px, py, tileSize, tileSize);
+            }
+        }
+        ctx.restore();
+
+        // Effetto Visivo Scudo
+        if (player.shield > 0) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(player.x * tileSize, player.y * tileSize, tileSize * 0.65, 0, Math.PI * 2);
+            ctx.strokeStyle = '#55ffff';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 2]);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+}
+
+let lastTime = 0;
+
+function loop(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    
+    let dt = (timestamp - lastTime) / 1000;
+    if (dt > 0.1) dt = 0.1; 
+    lastTime = timestamp;
+
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+}
+
+initOverworld();
+loop();
+</script>
+</body>
+</html>
